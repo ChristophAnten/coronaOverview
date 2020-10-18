@@ -1,11 +1,11 @@
-library(utils)
-library(plyr)
-library(dplyr)
-library(tidyr)
-library(ggpubr)
-library(ggplot2)
-library(grid)
-library(gridExtra)
+# library(utils)
+# library(plyr)
+# library(dplyr)
+# library(tidyr)
+# library(ggpubr)
+# library(ggplot2)
+# library(grid)
+# library(gridExtra)
 library(plotly)
 library(shiny)
 
@@ -41,14 +41,14 @@ plotCovid <- function(countries,average = 3,asList=FALSE){
         geom_point() +
         ylab(sprintf("abs. cases",average)) +
         theme_bw() +
-        ggtitle("Absolute daily cases")
+        ggtitle("absolute daily cases")
     p2 <- workDat %>% 
         ggplot(aes(x=dateRep,y=deaths_averaged,col=countriesAndTerritories)) +
         geom_line() +
         geom_point() +
         ylab(sprintf("abs. deaths",average)) +
         theme_bw()+
-        ggtitle("Absolute daily deaths")
+        ggtitle("absolute daily deaths")
     p3 <- workDat %>% 
         ggplot(aes(x=dateRep,y=cases_per_100k_pop,col=countriesAndTerritories)) +
         geom_line() +
@@ -71,9 +71,9 @@ plotCovid <- function(countries,average = 3,asList=FALSE){
 }
 loadData <- function(from="local"){
     if (from=="ecdc"){
-        data$from <- "ECDC"
-        data$time <- Sys.time()
-        data$raw <- read.csv("https://opendata.ecdc.europa.eu/covid19/casedistribution/csv",
+        data$from <<- "ECDC"
+        data$time <<- Sys.time()
+        data$raw <<- read.csv("https://opendata.ecdc.europa.eu/covid19/casedistribution/csv",
                              na.strings = "")
     }
     if (from=="local")
@@ -129,15 +129,20 @@ ui <- fluidPage(
 # Define server logic required to draw a histogram
 server <- function(input, output) {
     
-    res <- reactiveValues()
+    res <- reactiveValues(
+        from = data$from,
+        time = data$time)
     
-    output$dataInfoOrigin <- renderText({paste("Data from:",data$from)})
+    output$dataInfoOrigin <- renderText({paste("Data from:",res$from)})
     
-    output$dataInfoTime <- renderText({paste("Last update at:",data$time)})
+    output$dataInfoTime <- renderText({paste("Last update at:",res$time)})
     
     observeEvent(input$download,{
         print("--> load data start")
         loadData("ecdc")
+        saveData()
+        res$from = data$from
+        res$time = data$time
         print("--> load data end")
     })
     
