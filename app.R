@@ -9,6 +9,8 @@ library(gridExtra)
 library(plotly)
 library(shiny)
 
+library(ABACUS)
+
 ENV <- environment()
 
 mean_dist <- function(x,dist){
