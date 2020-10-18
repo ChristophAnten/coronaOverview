@@ -1,0 +1,130 @@
+#these libraries need to be loaded
+library(utils)
+library(plyr)
+library(dplyr)
+library(tidyr)
+library(ggpubr)
+library(ggplot2)
+library(grid)
+library(gridExtra) 
+library(plotly)
+mean_dist <- function(x,dist){
+  if (dist<1)
+    return(x)
+  n <- length(x)
+  y <- x
+  i=1
+  for(i in 1:dist){
+    y[1:(n-i)] <- y[1:(n-i)]+x[(1+i):n]
+    y[(1+i):n] <- y[(1+i):n]+x[1:(n-i)]
+  }
+  div <- c(seq(1+dist,2*dist),rep(1+2*dist,n-(2*dist)),seq(2*dist,1+dist))
+  return(y/div)
+}
+plotCovid <- function(countriesAndTerritories,average = 3,asList=FALSE){
+  workDat <- data %>% filter(countriesAndTerritories %in% countries) %>%
+    group_by(countriesAndTerritories) %>%
+    mutate(cases = ifelse(cases<0,0,cases),
+           deaths =ifelse(deaths<0,0,deaths)) %>%
+    mutate(cases_averaged = mean_dist(cases,average),
+           deaths_averaged = mean_dist(deaths,average),
+           cases_per_100000_averaged = cases_averaged/popData2019*100000,
+           deaths_per_100000_averaged = deaths_averaged/popData2019*100000) %>% 
+    mutate(dateRep = as.Date(dateRep,format = "%d/%m/%Y"))
+  
+  p1 <- workDat %>% 
+    ggplot(aes(x=dateRep,y=cases_averaged,col=countriesAndTerritories)) +
+    geom_line() +
+    geom_point() +
+    ylab(sprintf("abs. cases",average)) +
+    theme_bw()
+  p2 <- workDat %>% 
+    ggplot(aes(x=dateRep,y=deaths_averaged,col=countriesAndTerritories)) +
+    geom_line() +
+    geom_point() +
+    ylab(sprintf("abs. deaths",average)) +
+    theme_bw()
+  p3 <- workDat %>% 
+    ggplot(aes(x=dateRep,y=cases_per_100000_averaged,col=countriesAndTerritories)) +
+    geom_line() +
+    geom_point() +
+    ylab(sprintf("cases/100k pop. (mean over %i days)",average)) +
+    theme_bw()
+  p4 <- workDat %>% 
+    ggplot(aes(x=dateRep,y=deaths_per_100000_averaged,col=countriesAndTerritories)) +
+    geom_line() +
+    geom_point() +
+    ylab(sprintf("deaths/100k pop. (mean over %i days)",average)) +
+    theme_bw()
+  if (asList) {
+    return(list(p1,p2,p3,p4))
+  }
+  pAll <- ggarrange(p1, p2, p3, p4, ncol=2, nrow=2, common.legend = TRUE, legend="top")
+  return(pAll)
+}
+g_legend <- function(a.gplot){ 
+  tmp <- ggplot_gtable(ggplot_build(a.gplot)) 
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box") 
+  legend <- tmp$grobs[[leg]] 
+  legend
+} 
+
+
+#read the Dataset sheet into ?R?. The dataset will be called "data".
+data <- read.csv("https://opendata.ecdc.europa.eu/covid19/casedistribution/csv",
+                 na.strings = "")
+
+# variables
+data %>% names()
+
+data$countriesAndTerritories %>% unique()
+
+# countrycodes
+data %>% select(countriesAndTerritories) %>% unique()
+
+data %>% 
+  select(dateRep) %>% 
+  mutate(dateRep = as.Date(dateRep,format = "%d/%m/%Y"))
+
+as.Date("07/09/2020",format = "%d/%m/%Y")
+
+countries <- c(
+   "Netherlands",
+  # "United_States_of_America",
+  #"Spain",
+  "France",
+  #"United_Kingdom",
+  #"Italy",
+  # "Sweden",
+  "Czechia",
+  "Germany"
+  
+)#[c(1,4,7)]
+p <- plotCovid(countries,3,T)
+p[[1]]
+unique(p[[1]]$data[[1]]["fill"])
+str(p[[1]]$data[[1]])
+ggplotly(p[[1]])
+
+#----------------------------------------------------------------------
+# user_renviron = path.expand(file.path("~", ".Renviron"))
+# file.edit(user_renviron)
+# 
+# library(rworldmap)
+# newmap <- getMap(resolution = "low")
+# plot(newmap)
+# 
+# newmap$NAME
+# 
+# n = 20
+# a <- (1:n)/n
+# plot(newmap,
+#      xlim = c(-20, 59),
+#      ylim = c(35, 71),
+#      asp = 1,
+#      col= rgb(a,a,a)
+# )
+# str(newmap)
+# dim(newmap)
+# 
+# plot(newmap[which(newmap$NAME == "Germany"),])
