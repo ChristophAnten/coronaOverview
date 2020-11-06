@@ -1,3 +1,13 @@
+###############################################################################
+mandatory_packages <- c("utils", "plyr", "dplyr", "tidyr", 
+                        "ggpubr", "ggplot2", "grid", "gridExtra",
+                        "plotly", "shiny", "stringr")
+for (mp in mandatory_packages){
+    if(!require(mp,character.only = TRUE)){
+        install.packages(mp,dep=TRUE)
+    }
+}
+###############################################################################
 library(utils)
 library(plyr)
 library(dplyr)
