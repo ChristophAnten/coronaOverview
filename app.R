@@ -9,8 +9,9 @@ library(gridExtra)
 library(plotly)
 library(shiny)
 library(stringr)
-
-
+install.packages(c("utils", "plyr", "dplyr", "tidyr", 
+                   "ggpubr", "ggplot2", "grid", "gridExtra",
+                   "plotly", "shiny", "stringr"))
 mean_dist <- function(x,dist){
     if (dist<1)
         return(x)
