@@ -12,16 +12,8 @@ To run the code on your desktop:
 
 The following packages are mandatory and can be installed via:
 ```
-install.packages(c("utils",
-                   "plyr", 
-                   "dplyr", 
-                   "tidyr", 
-                   "ggpubr", 
-                   "ggplot2",
-                   "grid",
-                   "gridExtra",
-                   "plotly",
-                   "shiny",
-                   "stringr"))
+install.packages(c("utils", "plyr", "dplyr", "tidyr", 
+                   "ggpubr", "ggplot2", "grid", "gridExtra",
+                   "plotly", "shiny", "stringr"))
 
 ```
