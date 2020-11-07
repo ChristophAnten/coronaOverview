@@ -1,7 +1,8 @@
 ###############################################################################
 mandatory_packages <- c("utils", "plyr", "dplyr", "tidyr", 
                         "ggpubr", "ggplot2", "grid", "gridExtra",
-                        "plotly", "shiny", "stringr")
+                        "plotly", "shiny", "stringr",
+                        "data.table","bit64")
 for (mp in mandatory_packages){
     if(!require(mp,character.only = TRUE)){
         install.packages(mp,dep=TRUE)
@@ -19,6 +20,8 @@ library(gridExtra)
 library(plotly)
 library(shiny)
 library(stringr)
+library(bit64)
+library(data.table)
 
 mean_dist <- function(x,dist){
     if (dist<1)
@@ -70,9 +73,11 @@ gen_workDat <- function(){
                  rki_landkreis) 
     )
 }
-plotCovid <- function(selected_CandT,average = 3,asList=FALSE){
+plotCovid <- function(selected_CandT,average = 3,asList=FALSE,timeLimits){
     workDat <- workDat %>%
-        dplyr::filter(countriesAndTerritories %in% selected_CandT) %>% 
+        dplyr::filter(countriesAndTerritories %in% selected_CandT,
+                      dateRep < timeLimits[2],
+                      dateRep > timeLimits[1]) %>% 
         group_by(countriesAndTerritories) %>%
         mutate(cases = ifelse(cases<0,0,cases),
                deaths =ifelse(deaths<0,0,deaths)) %>%
@@ -121,10 +126,9 @@ loadData <- function(from="local"){
     if (from=="ecdc"){
         print(">>>>> loading ecdc data >>>>>")
         print(system.time({
-            data = list()
             data$from$ecdc <<- "ECDC"
             data$time$ecdc <<- Sys.time()
-            data$raw$ecdc <<- read.csv("https://opendata.ecdc.europa.eu/covid19/casedistribution/csv",
+            data$raw$ecdc <<- fread("https://opendata.ecdc.europa.eu/covid19/casedistribution/csv",
                                        na.strings = "")  
         }))
         print("<<<<< loading ecdc data <<<<<")
@@ -132,12 +136,10 @@ loadData <- function(from="local"){
     if (from == "rki"){
         print(">>>>> loading rki data >>>>>")
         print(system.time({
-            rki_pop <- read.csv("RKI_Corona_Landkreise.csv",encoding = "UTF-8")
-            data = list()
+            rki_pop <- fread("RKI_Corona_Landkreise.csv",encoding = "UTF-8")
             data$from$rki <<- "RKI"
             data$time$rki <<- Sys.time()
-            data$raw$rki <<- read.csv("https://opendata.arcgis.com/datasets/dd4580c810204019a7b8eb3e0b329dd6_0.csv",
-                                      na.strings = "", encoding = "UTF-8") %>% 
+            data$raw$rki <<- fread("https://opendata.arcgis.com/datasets/dd4580c810204019a7b8eb3e0b329dd6_0.csv", encoding = "UTF-8") %>% 
                 merge(rki_pop %>% 
                           dplyr::select(county,EWZ,EWZ_BL) %>%
                           rename(Landkreis = county),by=c("Landkreis"))
@@ -152,6 +154,7 @@ loadData <- function(from="local"){
         print("<<<<< loading local data <<<<<")
     }
 }
+
 saveData <- function(){
     save(data,file="data.RData")
 }
@@ -163,7 +166,7 @@ genChoices <- function(){
         dplyr::select(countriesAndTerritories) %>% 
         unique() %>% 
     ddply("countriesAndTerritories",function(x){
-        s <- unlist(stringr::str_locate_all(x," - "))[2]+3
+        s <- unlist(stringr::str_locate_all(x," - "))[2]
         out <- ifelse(is.na(s),
                       substring(x,first = 1),
                       paste("--",substring(x,first = s)))
@@ -178,7 +181,9 @@ genChoices <- function(){
 }
 
 ENV <- environment()
-data <- list()
+data = list(from=list(),
+            time=list(),
+            raw = list())
 # loadData("ecdc")
 # loadData("rki")
 # saveData()
@@ -199,7 +204,6 @@ ecdc_selectedCountries <- c(
     # "Sweden",
     # "Czechia",
     "Germany"
-    
 )#[c(1,4,7)]
 rki_selectedCounties <- c()
 # Define UI for application that draws a histogram
@@ -226,6 +230,8 @@ ui <- fluidPage(
             hr(),
             checkboxInput("relative","adjusted to total poulation",value = TRUE),
             numericInput("smooth","average over days",value=3,min=0,step=1),
+            sliderInput("timeSlide","xAxis",min=min(workDat$dateRep),max=max(workDat$dateRep),
+                        value=c(min(workDat$dateRep),max(workDat$dateRep)),dragRange = TRUE)
             
         ),
         
@@ -273,11 +279,12 @@ server <- function(input, output) {
     toListen <- reactive({
         list(input$countries,
              input$rki_counties,
-             input$smooth)
+             input$smooth,
+             input$timeSlide)
     })
     observeEvent(toListen(),{
         req(input$smooth)
-        res$plots <- plotCovid(c(input$countries,input$rki_counties),input$smooth,T)
+        res$plots <- plotCovid(c(input$countries,input$rki_counties),input$smooth,T,input$timeSlide)
     })
     
     # -------------------------------------------------------------------------- plot
