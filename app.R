@@ -148,10 +148,10 @@ plotCovid <- function(selected_CandT,average = 3,average_type = "latest", asList
         ggtitle("daily deaths per 100.000 population")
     
     if(logscale){
-        p1 = p1 + scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
-                                labels = trans_format("log10", math_format(10^.x)))
-        p2 = p2 + scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
-                                labels = trans_format("log10", math_format(10^.x)))
+        p1 = p1 +  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                                 labels = trans_format("log10", math_format(10^.x)))
+        p2 = p2 +  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                                 labels = trans_format("log10", math_format(10^.x)))
         p3 = p3 + scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
                                 labels = trans_format("log10", math_format(10^.x)))
         p4 = p4 + scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
@@ -183,7 +183,7 @@ loadData <- function(from="local"){
             rki_pop <- fread("RKI_Corona_Landkreise.csv",encoding = "UTF-8")
             data$from$rki <<- "RKI"
             data$time$rki <<- Sys.time()
-            data$raw$rki <<- fread("https://opendata.arcgis.com/datasets/dd4580c810204019a7b8eb3e0b329dd6_0.csv", encoding = "UTF-8") %>% 
+            data$raw$rki <<- fread("https://www.arcgis.com/sharing/rest/content/items/f10774f1c63e40168479a1feb6c7ca74/data", encoding = "UTF-8") %>% 
                 merge(rki_pop %>% 
                           dplyr::select(county,EWZ,EWZ_BL) %>%
                           rename(Landkreis = county),by=c("Landkreis"))
@@ -375,3 +375,4 @@ shinyApp(ui = ui, server = server)
 
 # To Do:
 # logscale gives warnings
+# adjust ylab in cummulative
