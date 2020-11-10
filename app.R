@@ -2,7 +2,7 @@
 mandatory_packages <- c("utils", "plyr", "dplyr", "tidyr", 
                         "ggpubr", "ggplot2", "grid", "gridExtra",
                         "plotly", "shiny", "stringr",
-                        "data.table","bit64")
+                        "data.table","bit64","scales")
 for (mp in mandatory_packages){
     if(!require(mp,character.only = TRUE)){
         install.packages(mp,dep=TRUE)
@@ -22,19 +22,39 @@ library(shiny)
 library(stringr)
 library(bit64)
 library(data.table)
+library(scales)
 
-mean_dist <- function(x,dist){
+mean_dist <- function(x,dist,type="latest"){
     if (dist<1)
         return(x)
+    if (dist>31){
+        print("Warning: average_Distance can not be set greater than 31 and thus is set to 31!")
+        dist <- 31
+    }
     n <- length(x)
     y <- x
-    i=1
-    for(i in 1:dist){
-        y[1:(n-i)] <- y[1:(n-i)]+x[(1+i):n]
-        y[(1+i):n] <- y[(1+i):n]+x[1:(n-i)]
+    if (type == "latest"){
+        for(i in 1:dist){
+            y[1:(n-i)] <- y[1:(n-i)]+x[(1+i):n]
+        }
+        div <- c(rep(dist+1,n-dist),seq(dist,1))
+        return(y/div)
     }
-    div <- c(seq(1+dist,2*dist),rep(1+2*dist,n-(2*dist)),seq(2*dist,1+dist))
-    return(y/div)
+    if (type == "PlusMinus"){
+        for(i in 1:dist){
+            y[1:(n-i)] <- y[1:(n-i)]+x[(1+i):n]
+            y[(1+i):n] <- y[(1+i):n]+x[1:(n-i)]
+        }
+        div <- c(seq(1+dist,2*dist),rep(1+2*dist,n-(2*dist)),seq(2*dist,1+dist))
+        return(y/div)
+    }
+    if (type == "oldest"){
+        for(i in 1:dist){
+            y[(1+i):n] <- y[(1+i):n]+x[1:(n-i)]
+        }
+        div <- c(seq(1,dist),rep(dist+1,n-dist))
+        return(y/div)
+    }
 }
 gen_workDat <- function(){
     ecdc_world <- data$raw$ecdc %>%
@@ -73,18 +93,30 @@ gen_workDat <- function(){
                  rki_landkreis) 
     )
 }
-plotCovid <- function(selected_CandT,average = 3,asList=FALSE,timeLimits){
+cumsumInv <- function(x){
+    return(cumsum(x[length(x):1])[length(x):1])
+}
+iff <- function(cond,x,y) {
+    if(cond) return(x) else return(y)
+}
+plotCovid <- function(selected_CandT,average = 3,average_type = "latest", asList=FALSE,
+                      timeLimits,cummulative=FALSE,logscale=FALSE){
+    
     workDat <- workDat %>%
-        dplyr::filter(countriesAndTerritories %in% selected_CandT,
-                      dateRep < timeLimits[2],
-                      dateRep > timeLimits[1]) %>% 
+        dplyr::filter(countriesAndTerritories %in% selected_CandT) %>% 
         group_by(countriesAndTerritories) %>%
         mutate(cases = ifelse(cases<0,0,cases),
                deaths =ifelse(deaths<0,0,deaths)) %>%
-        mutate(cases_averaged = mean_dist(cases,average),
-               deaths_averaged = mean_dist(deaths,average),
+        iff(cummulative,
+            mutate(.,cases = cumsumInv(cases),
+                   deaths = cumsumInv(deaths)),
+            .) %>%
+        mutate(cases_averaged = mean_dist(cases,average,average_type),
+               deaths_averaged = mean_dist(deaths,average,average_type),
                cases_per_100k_pop = cases_averaged/popData2019*100000,
-               deaths_per_100k_pop = deaths_averaged/popData2019*100000)
+               deaths_per_100k_pop = deaths_averaged/popData2019*100000) %>%
+        dplyr::filter(dateRep < timeLimits[2],
+                      dateRep > timeLimits[1])
     
     p1 <- workDat %>%
         ggplot(aes(x=dateRep,y=cases_averaged,col=countriesAndTerritories)) +
@@ -114,6 +146,18 @@ plotCovid <- function(selected_CandT,average = 3,asList=FALSE,timeLimits){
         ylab(sprintf("deaths/100k pop. (mean over %i days)",average)) +
         theme_bw()+
         ggtitle("daily deaths per 100.000 population")
+    
+    if(logscale){
+        p1 = p1 + scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                                labels = trans_format("log10", math_format(10^.x)))
+        p2 = p2 + scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                                labels = trans_format("log10", math_format(10^.x)))
+        p3 = p3 + scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                                labels = trans_format("log10", math_format(10^.x)))
+        p4 = p4 + scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                                labels = trans_format("log10", math_format(10^.x)))
+    }
+    
     if (asList) {
         return(list(p1,p2,p3,p4))
     }
@@ -154,7 +198,6 @@ loadData <- function(from="local"){
         print("<<<<< loading local data <<<<<")
     }
 }
-
 saveData <- function(){
     save(data,file="data.RData")
 }
@@ -191,21 +234,17 @@ loadData("local")
 
 workDat = gen_workDat()
 choices_all <- genChoices()
+smooth_type_choices <- c("latest","PlusMinus","oldest")
 ecdc_countryChoices <- choices_all$ecdc
 rki_countyChoices <- choices_all$rki
 
 ecdc_selectedCountries <- c(
     "Netherlands",
     "United_States_of_America",
-    # "Spain",
-    # "France",
-    # "United_Kingdom",
-    # "Italy",
-    # "Sweden",
-    # "Czechia",
     "Germany"
-)#[c(1,4,7)]
+)
 rki_selectedCounties <- c()
+
 # Define UI for application that draws a histogram
 ui <- fluidPage(
     
@@ -228,8 +267,10 @@ ui <- fluidPage(
             selectInput("rki_counties","Select County",multiple = TRUE,choices = rki_countyChoices,
                         selected = rki_selectedCounties),
             hr(),
-            checkboxInput("relative","adjusted to total poulation",value = TRUE),
-            numericInput("smooth","average over days",value=3,min=0,step=1),
+            checkboxInput("relative","adj. to population",value = TRUE),
+            checkboxInput("cummulative","cummulative",value = FALSE),
+            checkboxInput("logscale","logscale",value = FALSE),
+            numericInput("smooth","average over the last (1-31) days:",value=7,min=1,step=1,max = 31),
             sliderInput("timeSlide","xAxis",min=min(workDat$dateRep),max=max(workDat$dateRep),
                         value=c(min(workDat$dateRep),max(workDat$dateRep)),dragRange = TRUE)
             
@@ -280,11 +321,20 @@ server <- function(input, output) {
         list(input$countries,
              input$rki_counties,
              input$smooth,
-             input$timeSlide)
+             input$timeSlide,
+             input$cummulative,
+             input$logscale)
     })
     observeEvent(toListen(),{
         req(input$smooth)
-        res$plots <- plotCovid(c(input$countries,input$rki_counties),input$smooth,T,input$timeSlide)
+        if (!is.null(c(input$countries,input$rki_counties)))
+        res$plots <- plotCovid(selected_CandT = c(input$countries,input$rki_counties),
+                               average = input$smooth-1,
+                               average_type = "latest", 
+                               asList = TRUE,
+                               timeLimits = input$timeSlide,
+                               cummulative = input$cummulative,
+                               logscale = input$logscale)
     })
     
     # -------------------------------------------------------------------------- plot
@@ -322,3 +372,6 @@ server <- function(input, output) {
 
 # Run the application 
 shinyApp(ui = ui, server = server)
+
+# To Do:
+# logscale gives warnings
