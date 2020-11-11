@@ -24,6 +24,10 @@ library(bit64)
 library(data.table)
 library(scales)
 
+
+theme_set(
+    theme_bw(base_size = 15)
+)
 mean_dist <- function(x,dist,type="latest"){
     if (dist<1)
         return(x)
@@ -93,8 +97,8 @@ gen_workDat <- function(){
                  rki_landkreis) 
     )
 }
-cumsumInv <- function(x){
-    return(cumsum(x[length(x):1])[length(x):1])
+cumsumInv <- function(x,ref){
+    return(cumsum(x[order(ref,decreasing=TRUE)])[order(ref)])
 }
 iff <- function(cond,x,y) {
     if(cond) return(x) else return(y)
@@ -108,8 +112,8 @@ plotCovid <- function(selected_CandT,average = 3,average_type = "latest", asList
         mutate(cases = ifelse(cases<0,0,cases),
                deaths =ifelse(deaths<0,0,deaths)) %>%
         iff(cummulative,
-            mutate(.,cases = cumsumInv(cases),
-                   deaths = cumsumInv(deaths)),
+            mutate(.,cases = cumsumInv(cases,dateRep),
+                   deaths = cumsumInv(deaths,dateRep)),
             .) %>%
         mutate(cases_averaged = mean_dist(cases,average,average_type),
                deaths_averaged = mean_dist(deaths,average,average_type),
@@ -121,30 +125,26 @@ plotCovid <- function(selected_CandT,average = 3,average_type = "latest", asList
     p1 <- workDat %>%
         ggplot(aes(x=dateRep,y=cases_averaged,col=countriesAndTerritories)) +
         geom_line() +
-        geom_point() +
+        geom_point() + 
         ylab(sprintf("abs. cases",average)) +
-        theme_bw() +
         ggtitle("absolute daily cases")
     p2 <- workDat %>% 
         ggplot(aes(x=dateRep,y=deaths_averaged,col=countriesAndTerritories)) +
         geom_line() +
-        geom_point() +
+        geom_point() + 
         ylab(sprintf("abs. deaths",average)) +
-        theme_bw()+
         ggtitle("absolute daily deaths")
     p3 <- workDat %>% 
         ggplot(aes(x=dateRep,y=cases_per_100k_pop,col=countriesAndTerritories)) +
         geom_line() +
         geom_point() +
         ylab(sprintf("cases/100k pop. (mean over %i days)",average)) +
-        theme_bw()+
         ggtitle("daily cases per 100.000 population")
     p4 <- workDat %>% 
         ggplot(aes(x=dateRep,y=deaths_per_100k_pop,col=countriesAndTerritories)) +
         geom_line() +
         geom_point() +
         ylab(sprintf("deaths/100k pop. (mean over %i days)",average)) +
-        theme_bw()+
         ggtitle("daily deaths per 100.000 population")
     
     if(logscale){
@@ -278,8 +278,8 @@ ui <- fluidPage(
         
         # Show a plot of the generated distribution
         mainPanel(
-            plotlyOutput("distPlotCases"),
-            plotlyOutput("distPlotDeaths")
+            plotOutput("distPlotCases"),
+            plotOutput("distPlotDeaths")
         )
     )
 )
@@ -338,14 +338,14 @@ server <- function(input, output) {
     })
     
     # -------------------------------------------------------------------------- plot
-    output$distPlotCases <- renderPlotly({
+    output$distPlotCases <- renderPlot({
         # hide_legend(res$plots[[1]])
         if (!input$relative)
             res$plots[[1]]
         else
             res$plots[[3]]
     })
-    output$distPlotDeaths <- renderPlotly({
+    output$distPlotDeaths <- renderPlot({
         # hide_legend(res$plots[[2]])
         if (!input$relative)
             res$plots[[2]]
