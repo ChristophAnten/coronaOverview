@@ -1,7 +1,7 @@
 ###############################################################################
 mandatory_packages <- c("utils", "plyr", "dplyr", "tidyr", 
                         "ggpubr", "ggplot2", "grid", "gridExtra",
-                        "plotly", "shiny", "stringr",
+                        "shiny", "stringr",
                         "data.table","bit64","scales")
 for (mp in mandatory_packages){
     if(!require(mp,character.only = TRUE)){
@@ -17,7 +17,6 @@ library(ggpubr)
 library(ggplot2)
 library(grid)
 library(gridExtra)
-library(plotly)
 library(shiny)
 library(stringr)
 library(bit64)
@@ -28,6 +27,7 @@ library(scales)
 theme_set(
     theme_bw(base_size = 15)
 )
+
 mean_dist <- function(x,dist,type="latest"){
     if (dist<1)
         return(x)
@@ -103,44 +103,44 @@ cumsumInv <- function(x,ref){
 iff <- function(cond,x,y) {
     if(cond) return(x) else return(y)
 }
-plotCovid <- function(selected_CandT,average = 3,average_type = "latest", asList=FALSE,
-                      timeLimits,cummulative=FALSE,logscale=FALSE){
-    
-    workDat <- workDat %>%
-        dplyr::filter(countriesAndTerritories %in% selected_CandT) %>% 
-        group_by(countriesAndTerritories) %>%
-        mutate(cases = ifelse(cases<0,0,cases),
-               deaths =ifelse(deaths<0,0,deaths)) %>%
-        iff(cummulative,
-            mutate(.,cases = cumsumInv(cases,dateRep),
-                   deaths = cumsumInv(deaths,dateRep)),
-            .) %>%
-        mutate(cases_averaged = mean_dist(cases,average,average_type),
-               deaths_averaged = mean_dist(deaths,average,average_type),
-               cases_per_100k_pop = cases_averaged/popData2019*100000,
-               deaths_per_100k_pop = deaths_averaged/popData2019*100000) %>%
-        dplyr::filter(dateRep < timeLimits[2],
-                      dateRep > timeLimits[1])
-    
-    p1 <- workDat %>%
+gen_plotData <- function(selected_CandT,average = 3,average_type = "latest",
+                         timeLimits,cummulative=FALSE){
+    return(
+        workDat %>%
+            dplyr::filter(countriesAndTerritories %in% selected_CandT) %>% 
+            group_by(countriesAndTerritories) %>%
+            iff(cummulative,
+                mutate(.,cases = cumsumInv(cases,dateRep),
+                       deaths = cumsumInv(deaths,dateRep)),
+                .) %>%
+            mutate(cases_averaged = mean_dist(cases,average,average_type),
+                   deaths_averaged = mean_dist(deaths,average,average_type),
+                   cases_per_100k_pop = cases_averaged/popData2019*100000,
+                   deaths_per_100k_pop = deaths_averaged/popData2019*100000) %>%
+            dplyr::filter(dateRep < timeLimits[2],
+                          dateRep > timeLimits[1])
+    )
+}
+plotCovid <- function(plotData, asList=FALSE,logscale=FALSE){
+    p1 <- plotData %>%
         ggplot(aes(x=dateRep,y=cases_averaged,col=countriesAndTerritories)) +
         geom_line() +
         geom_point() + 
         ylab(sprintf("abs. cases",average)) +
         ggtitle("absolute daily cases")
-    p2 <- workDat %>% 
+    p2 <- plotData %>% 
         ggplot(aes(x=dateRep,y=deaths_averaged,col=countriesAndTerritories)) +
         geom_line() +
         geom_point() + 
         ylab(sprintf("abs. deaths",average)) +
         ggtitle("absolute daily deaths")
-    p3 <- workDat %>% 
+    p3 <- plotData %>% 
         ggplot(aes(x=dateRep,y=cases_per_100k_pop,col=countriesAndTerritories)) +
         geom_line() +
         geom_point() +
         ylab(sprintf("cases/100k pop. (mean over %i days)",average)) +
         ggtitle("daily cases per 100.000 population")
-    p4 <- workDat %>% 
+    p4 <- plotData %>% 
         ggplot(aes(x=dateRep,y=deaths_per_100k_pop,col=countriesAndTerritories)) +
         geom_line() +
         geom_point() +
@@ -278,8 +278,22 @@ ui <- fluidPage(
         
         # Show a plot of the generated distribution
         mainPanel(
-            plotOutput("distPlotCases"),
-            plotOutput("distPlotDeaths")
+            plotOutput("distPlotCases",
+                       click = "plotCases_click",
+                       hover = "plotCases_hover",
+                       brush = brushOpts(
+                           id = "plotCases_brush"
+                       )),
+            plotOutput("distPlotDeaths",
+                       click = "plotDeaths_click",
+                       hover = "plotDeaths_hover",
+                       brush = brushOpts(
+                           id = "plotDeaths_brush"
+                       )),
+            verbatimTextOutput("plotCases_hoverInfo"),
+            verbatimTextOutput("plotCases_clickInfo"),
+            verbatimTextOutput("plotCases_brushInfo")
+            
         )
     )
 )
@@ -327,14 +341,18 @@ server <- function(input, output) {
     })
     observeEvent(toListen(),{
         req(input$smooth)
-        if (!is.null(c(input$countries,input$rki_counties)))
-        res$plots <- plotCovid(selected_CandT = c(input$countries,input$rki_counties),
-                               average = input$smooth-1,
-                               average_type = "latest", 
-                               asList = TRUE,
-                               timeLimits = input$timeSlide,
-                               cummulative = input$cummulative,
-                               logscale = input$logscale)
+        if (!is.null(c(input$countries,input$rki_counties))){
+            res$plotDf <- gen_plotData(selected_CandT = c(input$countries,input$rki_counties),
+                         average = input$smooth-1,
+                         average_type = "latest",
+                         timeLimits = input$timeSlide,
+                         cummulative = input$cummulative)
+            res$plots <- plotCovid(res$plotDf,
+                                   asList = TRUE,
+                                   logscale = input$logscale)
+        }
+            
+        
     })
     
     # -------------------------------------------------------------------------- plot
@@ -352,7 +370,19 @@ server <- function(input, output) {
         else
             res$plots[[4]]
     })
-
+    output$plotCases_clickInfo <- renderPrint({
+        # Because it's a ggplot2, we don't need to supply xvar or yvar; if this
+        # were a base graphics plot, we'd need those.
+        nearPoints(res$plotDf, input$plotCases_click, addDist = TRUE)
+    })
+    
+    output$plotCases_hoverInfo <- renderPrint({
+        nearPoints(res$plotDf, input$plotCases_hover, addDist = TRUE)
+    })
+    
+    output$plotCases_brushInfo <- renderPrint({
+        brushedPoints(res$plotDf, input$plotCases_brush)
+    })
     # output$legend <- renderUI({
     #     col <- scales::hue_pal()(length(input$countries))
     #     lapply(1:length(col), function(i) {
@@ -376,3 +406,4 @@ shinyApp(ui = ui, server = server)
 # To Do:
 # logscale gives warnings
 # adjust ylab in cummulative
+# https://shiny.rstudio.com/gallery/plot-interaction-selecting-points.html
