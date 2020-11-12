@@ -248,6 +248,28 @@ rki_selectedCounties <- c()
 # Define UI for application that draws a histogram
 ui <- fluidPage(
     
+    # infoBox for plot data
+    tags$head(
+        tags$script(
+            HTML("
+           // Get mouse coordinates
+           var mouseX, mouseY;
+           $(document).mousemove(function(e) {
+           mouseX = e.pageX;
+           mouseY = e.pageY;
+           }).mouseover();
+
+           // Function to position draggable, place on current mouse coordinates
+           Shiny.addCustomMessageHandler ('placeDraggable',function (message) {
+           var element = $('#click_info').parent();
+           element.css({'top': mouseY + 'px', 'left' : mouseX + 'px'})
+           });
+           ")
+        ),
+        tags$style("#point_info table {background-color: rgba(255,255,255,.9); }",
+                   media="screen", 
+                   type="text/css")
+    ),
     # Application title
     titlePanel("Corona overview"),
     
@@ -290,16 +312,15 @@ ui <- fluidPage(
                        brush = brushOpts(
                            id = "plotDeaths_brush"
                        )),
-            verbatimTextOutput("plotCases_hoverInfo"),
-            verbatimTextOutput("plotCases_clickInfo"),
-            verbatimTextOutput("plotCases_brushInfo")
+            
+            absolutePanel(fixed=TRUE, draggable = TRUE, uiOutput("click_info"))
             
         )
     )
 )
 
 # Define server logic required to draw a histogram
-server <- function(input, output) {
+server <- function(input, output,session) {
     
     res <- reactiveValues(
         from = data$from,
@@ -370,19 +391,67 @@ server <- function(input, output) {
         else
             res$plots[[4]]
     })
-    output$plotCases_clickInfo <- renderPrint({
-        # Because it's a ggplot2, we don't need to supply xvar or yvar; if this
-        # were a base graphics plot, we'd need those.
-        nearPoints(res$plotDf, input$plotCases_click, addDist = TRUE)
+    # output$plotCases_clickInfo <- renderPrint({
+    #     # Because it's a ggplot2, we don't need to supply xvar or yvar; if this
+    #     # were a base graphics plot, we'd need those.
+    #     nearPoints(res$plotDf, input$plotCases_click, addDist = TRUE)
+    # })
+    # 
+    # output$plotCases_hoverInfo <- renderPrint({
+    #     nearPoints(res$plotDf, input$plotCases_hover, addDist = TRUE)
+    # })
+    # 
+    # output$plotCases_brushInfo <- renderPrint({
+    #     brushedPoints(res$plotDf, input$plotCases_brush)
+    # })
+    
+    show_this  = reactiveVal(NULL)
+    print_this = reactiveVal(NULL)
+    observeEvent(input$plotCases_click, {
+        p <- nearPoints(res$plotDf, input$plotCases_click, maxpoints=1)
+        if( nrow(p) == 0 ) {
+            show_this(NULL)
+        }
+        else {
+            session$sendCustomMessage(type = 'placeDraggable', message = list())
+            show_this(tagList(
+                { actionButton("input_button","OK") },
+                { br() },
+                { tableOutput("point_info") }
+            )
+            )
+            tmp <- res$plotDf %>% dplyr::filter(dateRep == p$dateRep)
+            q <- t(tmp[,c("cases","deaths","cases_averaged","deaths_averaged","cases_per_100k_pop", "deaths_per_100k_pop")])
+            colnames(q) <- tmp$countriesAndTerritories
+            print_this({q})
+        }
+    })
+    observeEvent(input$plotDeaths_click, {
+        p <- nearPoints(res$plotDf, input$plotDeaths_click, maxpoints=1)
+        if( nrow(p) == 0 ) {
+            show_this(NULL)
+        }
+        else {
+            session$sendCustomMessage(type = 'placeDraggable', message = list())
+            show_this(tagList(
+                { actionButton("input_button","OK") },
+                { br() },
+                { tableOutput("point_info") }
+            )
+            )
+            tmp <- res$plotDf %>% dplyr::filter(dateRep == p$dateRep)
+            q <- t(tmp[,c("cases","deaths","cases_averaged","deaths_averaged","cases_per_100k_pop", "deaths_per_100k_pop")])
+            colnames(q) <- tmp$countriesAndTerritories
+            print_this({q})
+        }
+    })
+    output$click_info <- renderUI   (show_this() )
+    output$point_info <- renderTable(print_this(),rownames = TRUE, style="background-color:'green';")
+    
+    observeEvent(input$input_button,{
+        if (input$input_button) { show_this(NULL) }
     })
     
-    output$plotCases_hoverInfo <- renderPrint({
-        nearPoints(res$plotDf, input$plotCases_hover, addDist = TRUE)
-    })
-    
-    output$plotCases_brushInfo <- renderPrint({
-        brushedPoints(res$plotDf, input$plotCases_brush)
-    })
     # output$legend <- renderUI({
     #     col <- scales::hue_pal()(length(input$countries))
     #     lapply(1:length(col), function(i) {
