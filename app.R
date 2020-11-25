@@ -121,18 +121,18 @@ gen_plotData <- function(selected_CandT,average = 3,average_type = "latest",
                           dateRep > timeLimits[1])
     )
 }
-plotCovid <- function(plotData, asList=FALSE,logscale=FALSE){
+plotCovid <- function(plotData, average=average, asList=FALSE,logscale=FALSE){
     p1 <- plotData %>%
         ggplot(aes(x=dateRep,y=cases_averaged,col=countriesAndTerritories)) +
         geom_line() +
         geom_point() + 
-        ylab(sprintf("abs. cases",average)) +
+        ylab(sprintf("abs. cases")) +
         ggtitle("absolute daily cases")
     p2 <- plotData %>% 
         ggplot(aes(x=dateRep,y=deaths_averaged,col=countriesAndTerritories)) +
         geom_line() +
         geom_point() + 
-        ylab(sprintf("abs. deaths",average)) +
+        ylab(sprintf("abs. deaths")) +
         ggtitle("absolute daily deaths")
     p3 <- plotData %>% 
         ggplot(aes(x=dateRep,y=cases_per_100k_pop,col=countriesAndTerritories)) +
@@ -230,8 +230,18 @@ data = list(from=list(),
 # loadData("ecdc")
 # loadData("rki")
 # saveData()
-loadData("local")
 
+d <- utf8ToInt(as.list(Sys.info())$nodename)
+j=0
+for (i in d){
+    j = (j + (i * 9808358)) %% 24862048
+}
+if (j==3796478){
+    loadData("local") 
+} else {
+    loadData("ecdc")
+    loadData("rki")
+}
 workDat = gen_workDat()
 choices_all <- genChoices()
 smooth_type_choices <- c("latest","PlusMinus","oldest")
@@ -289,6 +299,8 @@ ui <- fluidPage(
             selectInput("rki_counties","Select County",multiple = TRUE,choices = rki_countyChoices,
                         selected = rki_selectedCounties),
             hr(),
+            # checkboxGroupInput(inputId = "abc",label = NULL,choices = list("adj. to population","cummulative","logscale"),
+            #                    inline = TRUE,selected = 1),
             checkboxInput("relative","adj. to population",value = TRUE),
             checkboxInput("cummulative","cummulative",value = FALSE),
             checkboxInput("logscale","logscale",value = FALSE),
@@ -333,7 +345,7 @@ server <- function(input, output,session) {
     # -------------------------------------------------------------------------- download 
     observeEvent(input$ecdc_download,{
         loadData("ecdc")
-        saveData()
+        #saveData()
         res$from = data$from
         res$time = data$time
         print(res$workDat)
@@ -345,7 +357,7 @@ server <- function(input, output,session) {
     # -------------------------------------------------------------------------- download 
     observeEvent(input$rki_download,{
         loadData("rki")
-        saveData()
+        # saveData()
         res$from = res$from
         res$time = res$time
     })
@@ -369,6 +381,7 @@ server <- function(input, output,session) {
                          timeLimits = input$timeSlide,
                          cummulative = input$cummulative)
             res$plots <- plotCovid(res$plotDf,
+                                   average = input$smooth,
                                    asList = TRUE,
                                    logscale = input$logscale)
         }
@@ -446,7 +459,7 @@ server <- function(input, output,session) {
         }
     })
     output$click_info <- renderUI   (show_this() )
-    output$point_info <- renderTable(print_this(),rownames = TRUE, style="background-color:'green';")
+    output$point_info <- renderTable(print_this(),rownames = TRUE,bordered = TRUE)
     
     observeEvent(input$input_button,{
         if (input$input_button) { show_this(NULL) }
@@ -476,3 +489,4 @@ shinyApp(ui = ui, server = server)
 # logscale gives warnings
 # adjust ylab in cummulative
 # https://shiny.rstudio.com/gallery/plot-interaction-selecting-points.html
+# optional loading data from a different file
