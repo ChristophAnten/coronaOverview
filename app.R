@@ -231,6 +231,7 @@ data = list(from=list(),
 # loadData("rki")
 # saveData()
 
+# identify weather it is my computer or any other one
 d <- utf8ToInt(as.list(Sys.info())$nodename)
 j=0
 for (i in d){
@@ -242,6 +243,7 @@ if (j==3796478){
     loadData("ecdc")
     loadData("rki")
 }
+
 workDat = gen_workDat()
 choices_all <- genChoices()
 smooth_type_choices <- c("latest","PlusMinus","oldest")
@@ -490,3 +492,6 @@ shinyApp(ui = ui, server = server)
 # adjust ylab in cummulative
 # https://shiny.rstudio.com/gallery/plot-interaction-selecting-points.html
 # optional loading data from a different file
+# not mean over week but sum!
+# add table to hovering position with all data
+# change plots case deaths
