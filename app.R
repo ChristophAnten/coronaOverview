@@ -28,7 +28,7 @@ theme_set(
     theme_bw(base_size = 15)
 )
 
-mean_dist <- function(x,dist,type="latest"){
+mean_dist <- function(x,dist,type="latest",sum=TRUE){
     if (dist<1)
         return(x)
     if (dist>31){
@@ -41,6 +41,8 @@ mean_dist <- function(x,dist,type="latest"){
         for(i in 1:dist){
             y[1:(n-i)] <- y[1:(n-i)]+x[(1+i):n]
         }
+        if (sum)
+            return(y)
         div <- c(rep(dist+1,n-dist),seq(dist,1))
         return(y/div)
     }
@@ -49,6 +51,8 @@ mean_dist <- function(x,dist,type="latest"){
             y[1:(n-i)] <- y[1:(n-i)]+x[(1+i):n]
             y[(1+i):n] <- y[(1+i):n]+x[1:(n-i)]
         }
+        if (sum)
+            return(y)
         div <- c(seq(1+dist,2*dist),rep(1+2*dist,n-(2*dist)),seq(2*dist,1+dist))
         return(y/div)
     }
@@ -56,6 +60,8 @@ mean_dist <- function(x,dist,type="latest"){
         for(i in 1:dist){
             y[(1+i):n] <- y[(1+i):n]+x[1:(n-i)]
         }
+        if (sum)
+            return(y)
         div <- c(seq(1,dist),rep(dist+1,n-dist))
         return(y/div)
     }
@@ -104,17 +110,19 @@ iff <- function(cond,x,y) {
     if(cond) return(x) else return(y)
 }
 gen_plotData <- function(selected_CandT,average = 3,average_type = "latest",
+                         sum=TRUE,
                          timeLimits,cummulative=FALSE){
     return(
         workDat %>%
-            dplyr::filter(countriesAndTerritories %in% selected_CandT) %>% 
+            dplyr::filter(countriesAndTerritories %in% selected_CandT) %>%
+            dplyr::arrange(desc(dateRep)) %>%
             group_by(countriesAndTerritories) %>%
             iff(cummulative,
                 mutate(.,cases = cumsumInv(cases,dateRep),
                        deaths = cumsumInv(deaths,dateRep)),
                 .) %>%
-            mutate(cases_averaged = mean_dist(cases,average,average_type),
-                   deaths_averaged = mean_dist(deaths,average,average_type),
+            mutate(cases_averaged = mean_dist(cases,average,average_type,sum),
+                   deaths_averaged = mean_dist(deaths,average,average_type,sum),
                    cases_per_100k_pop = cases_averaged/popData2019*100000,
                    deaths_per_100k_pop = deaths_averaged/popData2019*100000) %>%
             dplyr::filter(dateRep < timeLimits[2],
@@ -237,6 +245,8 @@ j=0
 for (i in d){
     j = (j + (i * 9808358)) %% 24862048
 }
+
+# load data either from local or directly from the sources
 if (j==3796478){
     loadData("local") 
 } else {
@@ -306,7 +316,8 @@ ui <- fluidPage(
             checkboxInput("relative","adj. to population",value = TRUE),
             checkboxInput("cummulative","cummulative",value = FALSE),
             checkboxInput("logscale","logscale",value = FALSE),
-            numericInput("smooth","average over the last (1-31) days:",value=7,min=1,step=1,max = 31),
+            numericInput("smooth","sum/average over past (1-31) days:",value=7,min=1,step=1,max = 31),
+            radioButtons("meanOrSum",label=NULL,choices = c("sum","average"),selected = "sum",inline = TRUE),
             sliderInput("timeSlide","xAxis",min=min(workDat$dateRep),max=max(workDat$dateRep),
                         value=c(min(workDat$dateRep),max(workDat$dateRep)),dragRange = TRUE)
             
@@ -372,7 +383,8 @@ server <- function(input, output,session) {
              input$smooth,
              input$timeSlide,
              input$cummulative,
-             input$logscale)
+             input$logscale,
+             input$meanOrSum)
     })
     observeEvent(toListen(),{
         req(input$smooth)
@@ -380,6 +392,7 @@ server <- function(input, output,session) {
             res$plotDf <- gen_plotData(selected_CandT = c(input$countries,input$rki_counties),
                          average = input$smooth-1,
                          average_type = "latest",
+                         sum = (input$meanOrSum=="sum"),
                          timeLimits = input$timeSlide,
                          cummulative = input$cummulative)
             res$plots <- plotCovid(res$plotDf,
@@ -495,3 +508,4 @@ shinyApp(ui = ui, server = server)
 # not mean over week but sum!
 # add table to hovering position with all data
 # change plots case deaths
+# change load to download data or put a link
