@@ -67,8 +67,17 @@ mean_dist <- function(x,dist,type="latest",sum=TRUE){
     }
 }
 gen_workDat <- function(){
+    # ecdc_world <- data$raw$ecdc %>%
+    #     mutate(data = "ecdc") %>% 
+    #     rename(cases = cases_weekly,
+    #            deaths = deaths_weekly) %>%
+    #     dplyr::select(dateRep,cases,deaths,countriesAndTerritories,popData2019,data) %>% 
+    #     mutate(dateRep = as.Date(dateRep,format = "%d/%m/%Y"))
+    
     ecdc_world <- data$raw$ecdc %>%
         mutate(data = "ecdc") %>% 
+        rename(cases = cases_weekly,
+               deaths = deaths_weekly) %>%
         dplyr::select(dateRep,cases,deaths,countriesAndTerritories,popData2019,data) %>% 
         mutate(dateRep = as.Date(dateRep,format = "%d/%m/%Y"))
     
@@ -110,7 +119,7 @@ iff <- function(cond,x,y) {
     if(cond) return(x) else return(y)
 }
 gen_plotData <- function(selected_CandT,average = 3,average_type = "latest",
-                         sum=TRUE,
+                         sum=TRUE,adjToPop=TRUE,
                          timeLimits,cummulative=FALSE){
     return(
         workDat %>%
@@ -121,15 +130,17 @@ gen_plotData <- function(selected_CandT,average = 3,average_type = "latest",
                 mutate(.,cases = cumsumInv(cases,dateRep),
                        deaths = cumsumInv(deaths,dateRep)),
                 .) %>%
-            mutate(cases_averaged = mean_dist(cases,average,average_type,sum),
-                   deaths_averaged = mean_dist(deaths,average,average_type,sum),
-                   cases_per_100k_pop = cases_averaged/popData2019*100000,
-                   deaths_per_100k_pop = deaths_averaged/popData2019*100000) %>%
+            iff(adjToPop,
+                mutate(.,cases = cases/popData2019*100000,
+                       deaths = deaths/popData2019*100000),
+                .) %>%
+            mutate(cases = mean_dist(cases,average,average_type,sum),
+                   deaths = mean_dist(deaths,average,average_type,sum)) %>%
             dplyr::filter(dateRep < timeLimits[2],
                           dateRep > timeLimits[1])
     )
 }
-plotCovid <- function(plotData, average=average, asList=FALSE,logscale=FALSE){
+plotCovid_old <- function(plotData, average=average, asList=FALSE,logscale=FALSE){
     p1 <- plotData %>%
         ggplot(aes(x=dateRep,y=cases_averaged,col=countriesAndTerritories)) +
         geom_line() +
@@ -172,9 +183,48 @@ plotCovid <- function(plotData, average=average, asList=FALSE,logscale=FALSE){
     pAll <- ggarrange(p1, p2, p3, p4, ncol=2, nrow=2, common.legend = TRUE, legend="top")
     return(pAll)
 }
+plotCovid <- function(plotData, average=average, asList=FALSE,logscale=FALSE,adjToPop=TRUE){
+    
+    p1 <- plotData %>%
+        ggplot(aes(x=dateRep,y=cases,col=countriesAndTerritories)) +
+        geom_line() +
+        geom_point() + 
+        ylab(sprintf("abs. cases")) +
+        ggtitle("absolute daily cases")
+    p2 <- plotData %>% 
+        ggplot(aes(x=dateRep,y=deaths,col=countriesAndTerritories)) +
+        geom_line() +
+        geom_point() + 
+        ylab(sprintf("abs. deaths")) +
+        ggtitle("absolute daily deaths")
+    
+    if(logscale){
+        p1 = p1 +  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                                 labels = trans_format("log10", math_format(10^.x)))
+        p2 = p2 +  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+                                 labels = trans_format("log10", math_format(10^.x)))
+    }
+    
+    if (asList) {
+        return(list(p1,p2))
+    }
+    pAll <- ggarrange(p1, p2, ncol=2, nrow=2, common.legend = TRUE, legend="top")
+    return(pAll)
+}
 
 #res = list(workDat = gen_workDat())
 loadData <- function(from="local"){
+    if (from=="ourWorldInData"){
+        print(">>>>> loading ourWorldInData data >>>>>")
+        print(system.time({
+            data$from$ourWorldInData <<- "ourworldindata.org"
+            data$time$ourWorldInData <<- Sys.time()
+            data$raw$ourWorldInData <<- fread("https://covid.ourworldindata.org/data/owid-covid-data.csv",
+                                    na.strings = "")  
+        }))
+        print("<<<<< loading ourWorldInData data <<<<<")
+    }
+    
     if (from=="ecdc"){
         print(">>>>> loading ecdc data >>>>>")
         print(system.time({
@@ -237,6 +287,7 @@ data = list(from=list(),
             raw = list())
 # loadData("ecdc")
 # loadData("rki")
+# loadData("ourWorldInData")
 # saveData()
 
 # identify weather it is my computer or any other one
@@ -245,7 +296,7 @@ j=0
 for (i in d){
     j = (j + (i * 9808358)) %% 24862048
 }
-
+j=0
 # load data either from local or directly from the sources
 if (j==3796478){
     loadData("local") 
@@ -300,26 +351,26 @@ ui <- fluidPage(
         sidebarPanel(
             textOutput("ecdc_dataInfoOrigin"),
             textOutput("ecdc_dataInfoTime"),
-            actionButton("ecdc_download","Load newest ecdc-data",icon=icon("download")),
             selectInput("countries","Select Countries",multiple = TRUE,choices = ecdc_countryChoices,
                         selected = ecdc_selectedCountries),
             # uiOutput("legend")
             hr(),
             textOutput("rki_dataInfoOrigin"),
             textOutput("rki_dataInfoTime"),
-            actionButton("rki_download","Load newest rki-data",icon=icon("download")),
             selectInput("rki_counties","Select County",multiple = TRUE,choices = rki_countyChoices,
                         selected = rki_selectedCounties),
             hr(),
             # checkboxGroupInput(inputId = "abc",label = NULL,choices = list("adj. to population","cummulative","logscale"),
             #                    inline = TRUE,selected = 1),
-            checkboxInput("relative","adj. to population",value = TRUE),
+            checkboxInput("adjToPop","adj. to population",value = TRUE),
             checkboxInput("cummulative","cummulative",value = FALSE),
             checkboxInput("logscale","logscale",value = FALSE),
             numericInput("smooth","sum/average over past (1-31) days:",value=7,min=1,step=1,max = 31),
             radioButtons("meanOrSum",label=NULL,choices = c("sum","average"),selected = "sum",inline = TRUE),
             sliderInput("timeSlide","xAxis",min=min(workDat$dateRep),max=max(workDat$dateRep),
-                        value=c(min(workDat$dateRep),max(workDat$dateRep)),dragRange = TRUE)
+                        value=c(min(workDat$dateRep),max(workDat$dateRep)),dragRange = TRUE),
+            hr(),
+            "To filter the Datatable for specific datapoints drag an area in either of the plots or filter directly in the data table."
             
         ),
         
@@ -338,8 +389,8 @@ ui <- fluidPage(
                            id = "plotDeaths_brush"
                        )),
             
-            absolutePanel(fixed=TRUE, draggable = TRUE, uiOutput("click_info"))
-            
+            absolutePanel(fixed=TRUE, draggable = TRUE, uiOutput("click_info")),
+            dataTableOutput("selectedPlotOut")
         )
     )
 )
@@ -353,28 +404,14 @@ server <- function(input, output,session) {
     
     # ========================================================================== ECDC ====
     # -------------------------------------------------------------------------- info 
-    output$ecdc_dataInfoOrigin <- renderText({paste("Data from:",res$from$ecdc)})
-    output$ecdc_dataInfoTime <- renderText({paste("Last update at:",res$time$ecdc)})
-    # -------------------------------------------------------------------------- download 
-    observeEvent(input$ecdc_download,{
-        loadData("ecdc")
-        #saveData()
-        res$from = data$from
-        res$time = data$time
-        print(res$workDat)
-    })
+    output$ecdc_dataInfoOrigin <- renderText({paste("Data origin:",res$from$ecdc)})
+    output$ecdc_dataInfoTime <- renderText({paste("Last update:",res$time$ecdc)})
+
     # ========================================================================== RKI ====
     # -------------------------------------------------------------------------- info 
-    output$rki_dataInfoOrigin <- renderText({paste("Data from:",res$from$rki)})
-    output$rki_dataInfoTime <- renderText({paste("Last update at:",res$time$rki)})
-    # -------------------------------------------------------------------------- download 
-    observeEvent(input$rki_download,{
-        loadData("rki")
-        # saveData()
-        res$from = res$from
-        res$time = res$time
-    })
-    
+    output$rki_dataInfoOrigin <- renderText({paste("Data origin:",res$from$rki)})
+    output$rki_dataInfoTime <- renderText({paste("Last update:",res$time$rki)})
+
     # ========================================================================== PLOT ====
     # -------------------------------------------------------------------------- selection
     toListen <- reactive({
@@ -384,7 +421,8 @@ server <- function(input, output,session) {
              input$timeSlide,
              input$cummulative,
              input$logscale,
-             input$meanOrSum)
+             input$meanOrSum,
+             input$adjToPop)
     })
     observeEvent(toListen(),{
         req(input$smooth)
@@ -392,32 +430,24 @@ server <- function(input, output,session) {
             res$plotDf <- gen_plotData(selected_CandT = c(input$countries,input$rki_counties),
                          average = input$smooth-1,
                          average_type = "latest",
+                         adjToPop = input$adjToPop,
                          sum = (input$meanOrSum=="sum"),
                          timeLimits = input$timeSlide,
                          cummulative = input$cummulative)
             res$plots <- plotCovid(res$plotDf,
-                                   average = input$smooth,
                                    asList = TRUE,
-                                   logscale = input$logscale)
+                                   logscale = input$logscale,
+                                   adjToPop=input$adjToPop)
         }
-            
-        
     })
     
     # -------------------------------------------------------------------------- plot
     output$distPlotCases <- renderPlot({
         # hide_legend(res$plots[[1]])
-        if (!input$relative)
             res$plots[[1]]
-        else
-            res$plots[[3]]
     })
     output$distPlotDeaths <- renderPlot({
-        # hide_legend(res$plots[[2]])
-        if (!input$relative)
             res$plots[[2]]
-        else
-            res$plots[[4]]
     })
     # output$plotCases_clickInfo <- renderPrint({
     #     # Because it's a ggplot2, we don't need to supply xvar or yvar; if this
@@ -433,53 +463,106 @@ server <- function(input, output,session) {
     #     brushedPoints(res$plotDf, input$plotCases_brush)
     # })
     
-    show_this  = reactiveVal(NULL)
-    print_this = reactiveVal(NULL)
-    observeEvent(input$plotCases_click, {
-        p <- nearPoints(res$plotDf, input$plotCases_click, maxpoints=1)
-        if( nrow(p) == 0 ) {
-            show_this(NULL)
+    # show_this  = reactiveVal(NULL)
+    # print_this = reactiveVal(NULL)
+    # observeEvent(input$plotCases_click, {
+    #     p <- nearPoints(res$plotDf, input$plotCases_click, maxpoints=1)
+    #     if( nrow(p) == 0 ) {
+    #         show_this(NULL)
+    #     }
+    #     else {
+    #         session$sendCustomMessage(type = 'placeDraggable', message = list())
+    #         show_this(tagList(
+    #             { actionButton("input_button","OK") },
+    #             { br() },
+    #             { tableOutput("point_info") }
+    #         )
+    #         )
+    #         tmp <- res$plotDf %>% dplyr::filter(dateRep == p$dateRep)
+    #         q <- t(tmp[,c("cases","deaths")])
+    #         colnames(q) <- tmp$countriesAndTerritories
+    #         print_this({q})
+    #     }
+    # })
+    # observeEvent(input$plotDeaths_click, {
+    #     p <- nearPoints(res$plotDf, input$plotDeaths_click, maxpoints=1)
+    #     if( nrow(p) == 0 ) {
+    #         show_this(NULL)
+    #     }
+    #     else {
+    #         session$sendCustomMessage(type = 'placeDraggable', message = list())
+    #         show_this(tagList(
+    #             { actionButton("input_button","OK") },
+    #             { br() },
+    #             { tableOutput("point_info") }
+    #         )
+    #         )
+    #         tmp <- res$plotDf %>% dplyr::filter(dateRep == p$dateRep)
+    #         q <- t(tmp[,c("cases","deaths")])
+    #         colnames(q) <- tmp$countriesAndTerritories
+    #         print_this({q})
+    #     }
+    # })
+    # output$click_info <- renderUI   (show_this() )
+    # output$point_info <- renderTable(print_this(),rownames = TRUE,bordered = TRUE)
+    # 
+    # observeEvent(input$plotCases_hover, {
+    #     p <- nearPoints(res$plotDf, input$plotCases_hover, maxpoints=1)
+    #     if( nrow(p) == 0 ) {
+    #         show_this(NULL)
+    #     }
+    #     else {
+    #         session$sendCustomMessage(type = 'placeDraggable', message = list())
+    #         show_this(tagList(
+    #             { actionButton("input_button","OK") },
+    #             { br() },
+    #             { tableOutput("point_info") }
+    #         )
+    #         )
+    #         tmp <- res$plotDf %>% dplyr::filter(dateRep == p$dateRep)
+    #         q <- t(tmp[,c("dateRep","cases","deaths")])
+    #         colnames(q) <- tmp$countriesAndTerritories
+    #         print_this({q})
+    #     }
+    # })
+    # observeEvent(input$input_button,{
+    #     if (input$input_button) { show_this(NULL) }
+    # })
+    output$selectedPlotOut <- renderDataTable({
+        # res$plotDf
+        if(!is.null(input$plotCases_brush)){
+            if(!is.null(input$plotDeaths_brush)){
+                out <- res$plotDf %>% 
+                    dplyr::filter((cases<input$plotCases_brush$ymax &
+                                       cases>input$plotCases_brush$ymin &
+                                       dateRep<input$plotCases_brush$xmax&
+                                       dateRep>input$plotCases_brush$xmin)|
+                                      (deaths<input$plotDeaths_brush$ymax &
+                                           deaths>input$plotDeaths_brush$ymin &
+                                           dateRep<input$plotDeaths_brush$xmax&
+                                           dateRep>input$plotDeaths_brush$xmin))
+            } else {
+                out <- res$plotDf %>% 
+                    dplyr::filter(cases<input$plotCases_brush$ymax &
+                                      cases>input$plotCases_brush$ymin &
+                                      dateRep<input$plotCases_brush$xmax&
+                                      dateRep>input$plotCases_brush$xmin)
+            }
+        } else {
+            if(!is.null(input$plotDeaths_brush)){
+                out <- res$plotDf %>% 
+                    dplyr::filter(deaths<input$plotDeaths_brush$ymax &
+                                      deaths>input$plotDeaths_brush$ymin &
+                                      dateRep<input$plotDeaths_brush$xmax&
+                                      dateRep>input$plotDeaths_brush$xmin)
+            } else {
+                # print(input$plotDeaths_brush)
+                # print(input$plotCases_brush)
+                out <- res$plotDf
+            }
         }
-        else {
-            session$sendCustomMessage(type = 'placeDraggable', message = list())
-            show_this(tagList(
-                { actionButton("input_button","OK") },
-                { br() },
-                { tableOutput("point_info") }
-            )
-            )
-            tmp <- res$plotDf %>% dplyr::filter(dateRep == p$dateRep)
-            q <- t(tmp[,c("cases","deaths","cases_averaged","deaths_averaged","cases_per_100k_pop", "deaths_per_100k_pop")])
-            colnames(q) <- tmp$countriesAndTerritories
-            print_this({q})
-        }
+        out
     })
-    observeEvent(input$plotDeaths_click, {
-        p <- nearPoints(res$plotDf, input$plotDeaths_click, maxpoints=1)
-        if( nrow(p) == 0 ) {
-            show_this(NULL)
-        }
-        else {
-            session$sendCustomMessage(type = 'placeDraggable', message = list())
-            show_this(tagList(
-                { actionButton("input_button","OK") },
-                { br() },
-                { tableOutput("point_info") }
-            )
-            )
-            tmp <- res$plotDf %>% dplyr::filter(dateRep == p$dateRep)
-            q <- t(tmp[,c("cases","deaths","cases_averaged","deaths_averaged","cases_per_100k_pop", "deaths_per_100k_pop")])
-            colnames(q) <- tmp$countriesAndTerritories
-            print_this({q})
-        }
-    })
-    output$click_info <- renderUI   (show_this() )
-    output$point_info <- renderTable(print_this(),rownames = TRUE,bordered = TRUE)
-    
-    observeEvent(input$input_button,{
-        if (input$input_button) { show_this(NULL) }
-    })
-    
     # output$legend <- renderUI({
     #     col <- scales::hue_pal()(length(input$countries))
     #     lapply(1:length(col), function(i) {
