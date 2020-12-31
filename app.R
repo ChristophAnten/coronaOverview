@@ -67,19 +67,40 @@ mean_dist <- function(x,dist,type="latest",sum=TRUE){
     }
 }
 gen_workDat <- function(){
-    # ecdc_world <- data$raw$ecdc %>%
-    #     mutate(data = "ecdc") %>% 
-    #     rename(cases = cases_weekly,
-    #            deaths = deaths_weekly) %>%
-    #     dplyr::select(dateRep,cases,deaths,countriesAndTerritories,popData2019,data) %>% 
-    #     mutate(dateRep = as.Date(dateRep,format = "%d/%m/%Y"))
+    ourWorldInData_world <- data$raw$ourWorldInData %>%
+        mutate(data = "ourWorldInData") %>%
+        rename(cases = new_cases,
+               deaths = new_deaths,
+               dateRep = date,
+               countriesAndTerritories = location,
+               popData2019 = population) %>%
+        mutate(countriesAndTerritories = paste(countriesAndTerritories,"(OWID)")) %>%
+        dplyr::select(dateRep,cases,deaths,countriesAndTerritories,popData2019,data) %>%
+        mutate(dateRep = as.Date(dateRep,format = "%d/%m/%Y"))
     
-    ecdc_world <- data$raw$ecdc %>%
-        mutate(data = "ecdc") %>% 
+    ecdc_world_weekly <- data$raw$ecdc %>%
         rename(cases = cases_weekly,
                deaths = deaths_weekly) %>%
-        dplyr::select(dateRep,cases,deaths,countriesAndTerritories,popData2019,data) %>% 
+        dplyr::select(dateRep,cases,deaths,countriesAndTerritories,popData2019) %>%
         mutate(dateRep = as.Date(dateRep,format = "%d/%m/%Y"))
+
+    a <- ecdc_world_weekly
+    b=data.frame(dateRep=NULL)
+    for (i in a$countriesAndTerritories %>% unique()){
+        b <- rbind(b,data.frame(dateRep=seq(max(a$dateRep[a$countriesAndTerritories==i]), 
+                     min(a$dateRep[a$countriesAndTerritories==i])-6,
+                     by=-1),
+                   countriesAndTerritories = i))
+    }
+    ecdc_world = b %>% 
+        merge(a,by=c("dateRep","countriesAndTerritories"),all.x=T,sort = FALSE) %>%
+        arrange(desc(dateRep),countriesAndTerritories) %>%
+        group_by(countriesAndTerritories) %>%
+        fill(popData2019,cases,deaths,.direction = c("down")) %>%
+        mutate(cases = cases/7,
+               deaths = deaths/7) %>%
+        mutate(data = "ecdc") %>%
+        mutate(countriesAndTerritories = paste(countriesAndTerritories,"(ECDC)"))
     
     rki_bundesland <- data$raw$rki %>%
         rename(dateRep = Refdatum) %>%
@@ -91,7 +112,8 @@ gen_workDat <- function(){
         mutate(data = "rki",
                countriesAndTerritories = paste(Bundesland)) %>%
         dplyr::select(dateRep,cases,deaths,countriesAndTerritories,popData2019,data) %>% 
-        mutate(dateRep = as.Date(dateRep,format = "%Y/%m/%d"))
+        mutate(dateRep = as.Date(dateRep,format = "%Y/%m/%d")) %>%
+        mutate(countriesAndTerritories = paste(countriesAndTerritories,"(RKI)"))
     
     
     rki_landkreis <- data$raw$rki %>% 
@@ -105,11 +127,13 @@ gen_workDat <- function(){
         mutate(data = "rki",
                countriesAndTerritories = Landkreis) %>%
         dplyr::select(dateRep,cases,deaths,countriesAndTerritories,popData2019,data) %>% 
-        mutate(dateRep = as.Date(dateRep,format = "%Y/%m/%d"))
+        mutate(dateRep = as.Date(dateRep,format = "%Y/%m/%d")) %>%
+        mutate(countriesAndTerritories = paste(countriesAndTerritories,"(RKI)"))
     
     return(rbind(ecdc_world, 
                  rki_bundesland, 
-                 rki_landkreis) 
+                 rki_landkreis,
+                 ourWorldInData_world) 
     )
 }
 cumsumInv <- function(x,ref){
@@ -275,9 +299,14 @@ genChoices <- function(){
     })
     rki <- factor(rki.tmp$countriesAndTerritories)
     names(rki) <- rki.tmp$V1
+    
+    ourWorldInData = workDat %>% dplyr::filter(data=="ourWorldInData") %>% 
+        dplyr::select(countriesAndTerritories) %>% 
+        unique()
     return(
         list(ecdc=ecdc,
-             rki=rki)
+             rki=rki,
+             ourWorldInData=ourWorldInData)
     )
 }
 
@@ -296,13 +325,14 @@ j=0
 for (i in d){
     j = (j + (i * 9808358)) %% 24862048
 }
-j=0
+#j=0
 # load data either from local or directly from the sources
 if (j==3796478){
     loadData("local") 
 } else {
     loadData("ecdc")
     loadData("rki")
+    loadData("ourWorldInData")
 }
 
 workDat = gen_workDat()
@@ -310,13 +340,15 @@ choices_all <- genChoices()
 smooth_type_choices <- c("latest","PlusMinus","oldest")
 ecdc_countryChoices <- choices_all$ecdc
 rki_countyChoices <- choices_all$rki
+ourWorldInData_countryChoices <- choices_all$ourWorldInData
 
 ecdc_selectedCountries <- c(
-    "Netherlands",
-    "United_States_of_America",
-    "Germany"
+    "Netherlands (ECDC)",
+    "United_States_of_America (ECDC)",
+    "Germany (ECDC)"
 )
 rki_selectedCounties <- c()
+ourWorldInData_selectedCountries <- c()
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
@@ -351,7 +383,7 @@ ui <- fluidPage(
         sidebarPanel(
             textOutput("ecdc_dataInfoOrigin"),
             textOutput("ecdc_dataInfoTime"),
-            selectInput("countries","Select Countries",multiple = TRUE,choices = ecdc_countryChoices,
+            selectInput("ecdc_countries","Select Countries",multiple = TRUE,choices = ecdc_countryChoices,
                         selected = ecdc_selectedCountries),
             # uiOutput("legend")
             hr(),
@@ -359,6 +391,11 @@ ui <- fluidPage(
             textOutput("rki_dataInfoTime"),
             selectInput("rki_counties","Select County",multiple = TRUE,choices = rki_countyChoices,
                         selected = rki_selectedCounties),
+            hr(),
+            textOutput("ourWorldInData_dataInfoOrigin"),
+            textOutput("ourWorldInData_dataInfoTime"),
+            selectInput("ourWorldInData_countries","Select County",multiple = TRUE,choices = ourWorldInData_countryChoices,
+                        selected = ourWorldInData_selectedCountries),
             hr(),
             # checkboxGroupInput(inputId = "abc",label = NULL,choices = list("adj. to population","cummulative","logscale"),
             #                    inline = TRUE,selected = 1),
@@ -406,17 +443,23 @@ server <- function(input, output,session) {
     # -------------------------------------------------------------------------- info 
     output$ecdc_dataInfoOrigin <- renderText({paste("Data origin:",res$from$ecdc)})
     output$ecdc_dataInfoTime <- renderText({paste("Last update:",res$time$ecdc)})
-
+    
     # ========================================================================== RKI ====
     # -------------------------------------------------------------------------- info 
     output$rki_dataInfoOrigin <- renderText({paste("Data origin:",res$from$rki)})
     output$rki_dataInfoTime <- renderText({paste("Last update:",res$time$rki)})
+    
+    # ========================================================================== ourWorldInData ====
+    # -------------------------------------------------------------------------- info 
+    output$ourWorldInData_dataInfoOrigin <- renderText({paste("Data origin:",res$from$ourWorldInData)})
+    output$ourWorldInData_dataInfoTime <- renderText({paste("Last update:",res$time$ourWorldInData)})
 
     # ========================================================================== PLOT ====
     # -------------------------------------------------------------------------- selection
     toListen <- reactive({
-        list(input$countries,
+        list(input$ecdc_countries,
              input$rki_counties,
+             input$ourWorldInData_countries,
              input$smooth,
              input$timeSlide,
              input$cummulative,
@@ -426,8 +469,10 @@ server <- function(input, output,session) {
     })
     observeEvent(toListen(),{
         req(input$smooth)
-        if (!is.null(c(input$countries,input$rki_counties))){
-            res$plotDf <- gen_plotData(selected_CandT = c(input$countries,input$rki_counties),
+        if (!is.null(c(input$ecdc_countries,
+                       input$rki_counties,
+                       input$ourWorldInData_countries))){
+            res$plotDf <- gen_plotData(selected_CandT = c(input$ecdc_countries,input$rki_counties,input$ourWorldInData_countries),
                          average = input$smooth-1,
                          average_type = "latest",
                          adjToPop = input$adjToPop,
