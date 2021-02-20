@@ -79,8 +79,8 @@ gen_workDat <- function(){
         mutate(dateRep = as.Date(dateRep,format = "%d/%m/%Y"))
     
     ecdc_world_weekly <- data$raw$ecdc %>%
-        rename(cases = cases_weekly,
-               deaths = deaths_weekly) %>%
+        # rename(cases = cases_weekly,
+        #        deaths = deaths_weekly) %>%
         dplyr::select(dateRep,cases,deaths,countriesAndTerritories,popData2019) %>%
         mutate(dateRep = as.Date(dateRep,format = "%d/%m/%Y"))
 
@@ -325,7 +325,7 @@ j=0
 for (i in d){
     j = (j + (i * 9808358)) %% 24862048
 }
-#j=0
+j=0
 # load data either from local or directly from the sources
 if (j==3796478){
     loadData("local") 
