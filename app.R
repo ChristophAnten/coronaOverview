@@ -92,13 +92,15 @@ gen_workDat <- function(){
                      by=-1),
                    countriesAndTerritories = i))
     }
-    ecdc_world = b %>% 
-        merge(a,by=c("dateRep","countriesAndTerritories"),all.x=T,sort = FALSE) %>%
-        arrange(desc(dateRep),countriesAndTerritories) %>%
+    ecdc_world = data$raw$ecdc %>% 
+        dplyr::select(dateRep,cases,deaths,countriesAndTerritories,popData2019) %>%
+        mutate(dateRep = as.Date(dateRep,format = "%d/%m/%Y")) %>%
+        # merge(a,by=c("dateRep","countriesAndTerritories"),all.x=T,sort = FALSE) %>%
+        # arrange(desc(dateRep),countriesAndTerritories) %>%
         group_by(countriesAndTerritories) %>%
-        fill(popData2019,cases,deaths,.direction = c("down")) %>%
-        mutate(cases = cases/7,
-               deaths = deaths/7) %>%
+        # fill(popData2019,cases,deaths,.direction = c("down")) %>%
+        # mutate(cases = cases/7,
+        #        deaths = deaths/7) %>%
         mutate(data = "ecdc") %>%
         mutate(countriesAndTerritories = paste(countriesAndTerritories,"(ECDC)"))
     
@@ -265,7 +267,9 @@ loadData <- function(from="local"){
             rki_pop <- fread("RKI_Corona_Landkreise.csv",encoding = "UTF-8")
             data$from$rki <<- "RKI"
             data$time$rki <<- Sys.time()
-            data$raw$rki <<- fread("https://www.arcgis.com/sharing/rest/content/items/f10774f1c63e40168479a1feb6c7ca74/data", encoding = "UTF-8") %>% 
+            data$raw$rki <<- 
+                #fread("https://www.arcgis.com/sharing/rest/content/items/f10774f1c63e40168479a1feb6c7ca74/data", encoding = "UTF-8") %>% 
+                fread("https://opendata.arcgis.com/datasets/dd4580c810204019a7b8eb3e0b329dd6_0.csv", encoding = "UTF-8") %>% 
                 merge(rki_pop %>% 
                           dplyr::select(county,EWZ,EWZ_BL) %>%
                           rename(Landkreis = county),by=c("Landkreis"))
