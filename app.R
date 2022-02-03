@@ -269,7 +269,8 @@ loadData <- function(from="local"){
             data$time$rki <<- Sys.time()
             data$raw$rki <<- 
                 #fread("https://www.arcgis.com/sharing/rest/content/items/f10774f1c63e40168479a1feb6c7ca74/data", encoding = "UTF-8") %>% 
-                fread("https://opendata.arcgis.com/datasets/dd4580c810204019a7b8eb3e0b329dd6_0.csv", encoding = "UTF-8") %>% 
+                #fread("https://opendata.arcgis.com/datasets/dd4580c810204019a7b8eb3e0b329dd6_0.csv", encoding = "UTF-8") %>% 
+                fread("https://www.arcgis.com/sharing/rest/content/items/66876b81065340a4a48710b062319336/data", encoding = "UTF-8") %>%
                 merge(rki_pop %>% 
                           dplyr::select(county,EWZ,EWZ_BL) %>%
                           rename(Landkreis = county),by=c("Landkreis"))
@@ -291,19 +292,22 @@ genChoices <- function(){
     ecdc = workDat %>% dplyr::filter(data=="ecdc") %>% 
         dplyr::select(countriesAndTerritories) %>% 
         unique()
-    rki.tmp = workDat %>% dplyr::filter(data=="rki") %>% 
-        dplyr::select(countriesAndTerritories) %>% 
-        unique() %>% 
-    ddply("countriesAndTerritories",function(x){
-        s <- unlist(stringr::str_locate_all(x," - "))[2]
-        out <- ifelse(is.na(s),
-                      substring(x,first = 1),
-                      paste("--",substring(x,first = s)))
-        return(out)
-    })
-    rki <- factor(rki.tmp$countriesAndTerritories)
-    names(rki) <- rki.tmp$V1
+    # rki.tmp = workDat %>% dplyr::filter(data=="rki") %>% 
+    #     dplyr::select(countriesAndTerritories) %>% 
+    #     unique() %>% 
+    #     ddply("countriesAndTerritories",function(x){
+    #         s <- unlist(stringr::str_locate_all(x," - "))[2]
+    #         out <- ifelse(is.na(s),
+    #                       substring(x,first = 1),
+    #                       paste("--",substring(x,first = s)))
+    #         return(out)
+    #     })
+    # rki <- factor(rki.tmp$countriesAndTerritories)
+    # names(rki) <- rki.tmp$V1
     
+    rki = workDat %>% dplyr::filter(data=="rki") %>% 
+        dplyr::select(countriesAndTerritories) %>% 
+        unique()
     ourWorldInData = workDat %>% dplyr::filter(data=="ourWorldInData") %>% 
         dplyr::select(countriesAndTerritories) %>% 
         unique()
@@ -329,9 +333,9 @@ j=0
 for (i in d){
     j = (j + (i * 9808358)) %% 24862048
 }
-j=0
+#j=0
 # load data either from local or directly from the sources
-if (j==3796478){
+if (j==2730898){
     loadData("local") 
 } else {
     loadData("ecdc")
@@ -347,11 +351,15 @@ rki_countyChoices <- choices_all$rki
 ourWorldInData_countryChoices <- choices_all$ourWorldInData
 
 ecdc_selectedCountries <- c(
-    "Netherlands (ECDC)",
-    "United_States_of_America (ECDC)",
-    "Germany (ECDC)"
+    # "Netherlands (ECDC)",
+    # "United_States_of_America (ECDC)",
+    # "Germany (ECDC)"
 )
-rki_selectedCounties <- c()
+rki_selectedCounties <- c(
+    "Niedersachsen - LK Vechta (RKI)",
+    "Schleswig-Holstein - LK Pinneberg (RKI)",
+    "Hamburg (RKI)"
+)
 ourWorldInData_selectedCountries <- c()
 
 # Define UI for application that draws a histogram
