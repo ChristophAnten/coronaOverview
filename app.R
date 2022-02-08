@@ -333,7 +333,7 @@ j=0
 for (i in d){
     j = (j + (i * 9808358)) %% 24862048
 }
-#j=0
+j=0
 # load data either from local or directly from the sources
 if (j==2730898){
     loadData("local") 
